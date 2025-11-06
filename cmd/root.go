@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/marcorentap/esw7004-serverless-runtime/internal/slrun"
+	"github.com/marcorentap/slrun/internal/slrun"
 	"github.com/spf13/cobra"
 )
 
