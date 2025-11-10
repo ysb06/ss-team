@@ -162,7 +162,6 @@ func Start(cfgFile string, host string, port int) error {
 
 			funcName := parts[1]
 			path, _ := strings.CutPrefix(r.URL.Path, "/"+funcName)
-			path = "/run" + path
 
 			resp, err := runtime.CallFunctionByName(funcName, path)
 			if err != nil {

@@ -3,16 +3,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/run":
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Hello from function 1!")
-        else:
-            self.send_response(404)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Not found")
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Hello from function 1!\n")
+        self.wfile.write(bytes("path=" + self.path, "utf-8"))
 
 
 def run(server_class=HTTPServer, handler_class=SimpleHTTPRequestHandler, port=80):
