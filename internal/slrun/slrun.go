@@ -20,9 +20,10 @@ import (
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/marcorentap/slrun/internal/types"
 )
 
-var config *Config
+var config *types.Config
 var dockerCli *client.Client
 var dockerCtx context.Context
 var runtime *Runtime
@@ -79,7 +80,7 @@ func createTarContext(dirPath string) (io.Reader, error) {
 	return buf, nil
 }
 
-func BuildFunctionImage(function *Function) error {
+func BuildFunctionImage(function *types.Function) error {
 	buildCtx, err := createTarContext(function.BuildDir)
 	if err != nil {
 		return err
@@ -110,7 +111,7 @@ func BuildFunctionImage(function *Function) error {
 	// We have to read from the response, else it won't build
 	io.Copy(io.Discard, buildResp.Body)
 
-	function.imageName = imageName
+	function.ImageName = imageName
 	return nil
 }
 
@@ -131,16 +132,16 @@ func Start(cfgFile string, host string, port int) error {
 		fmt.Printf("Building function image: %v => %v\n", function.Name, function.BuildDir)
 		err := BuildFunctionImage(function)
 		if err != nil {
-			log.Printf("Cannot build image %v\n", function.imageName)
+			log.Printf("Cannot build image %v\n", function.ImageName)
 			return err
 		}
 
-		fmt.Printf("Built function image: %v\n", function.imageName)
+		fmt.Printf("Built function image: %v\n", function.ImageName)
 	}
 
 	// Start function manager
 	log.Printf("Starting runtime\n")
-	runtime, err := NewRuntime(config.Functions)
+	runtime, err := NewRuntime(config.Functions, config.Policy)
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func Start(cfgFile string, host string, port int) error {
 
 			resp, err := runtime.CallFunctionByName(funcName, path)
 			if err != nil {
-				w.Write([]byte("Unknown function"))
+				w.Write([]byte(err.Error()))
 				return
 			}
 

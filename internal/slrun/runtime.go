@@ -7,37 +7,64 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/marcorentap/slrun/internal/policy"
+	"github.com/marcorentap/slrun/internal/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 type Runtime struct {
-	functions []*Function
+	functions []*types.Function
 	running   bool
 	cli       *client.Client // Docker client
+	policy    types.Policy
 }
 
-func NewRuntime(functions []*Function) (*Runtime, error) {
+func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime, error) {
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
 
-	return &Runtime{
+	r := Runtime{
 		functions: functions,
 		running:   false,
 		cli:       dockerCli,
-	}, nil
+	}
+
+	var pol types.Policy
+	switch policyId {
+	case types.AlwaysColdPolicy:
+		pol = &policy.AlwaysCold{
+			Funcs:     functions,
+			StartFunc: r.startFunction,
+			StopFunc:  r.stopFunction,
+		}
+	case types.AlwaysHotPolicy:
+		pol = &policy.AlwaysHot{
+			Funcs:     functions,
+			StartFunc: r.startFunction,
+			StopFunc:  r.stopFunction,
+		}
+
+	default:
+		return nil, fmt.Errorf("unknown policy ID: %d", policyId)
+	}
+
+	r.policy = pol
+
+	return &r, nil
 }
 
-func (r *Runtime) startFunction(function *Function) error {
+func (r *Runtime) startFunction(function *types.Function) error {
 	ctx := context.Background()
 	config := &container.Config{
-		Image: function.imageName,
+		Image: function.ImageName,
 	}
 	networkingConfig := &network.NetworkingConfig{}
 	platform := &ocispec.Platform{}
@@ -68,28 +95,54 @@ func (r *Runtime) startFunction(function *Function) error {
 	if err != nil {
 		return err
 	}
+
 	inspResp, err := r.cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
-		log.Printf("Cannot inspect container %v: %v\n", resp.ID, err)
 		return err
 	}
 
 	hostPort := inspResp.NetworkSettings.Ports["80/tcp"][0].HostPort
-
-	function.containerId = resp.ID
-	function.port, _ = strconv.Atoi(hostPort)
+	function.ContainerId = resp.ID
+	function.Port, _ = strconv.Atoi(hostPort)
 	return nil
 }
 
-func (r *Runtime) stopFunction(function *Function) error {
+func (r *Runtime) stopFunction(function *types.Function) error {
 	ctx := context.Background()
 	stopTimeout := 0 // Don't wait for graceful shutdown
-	err := r.cli.ContainerStop(ctx, function.containerId, container.StopOptions{
+	err := r.cli.ContainerStop(ctx, function.ContainerId, container.StopOptions{
 		Timeout: &stopTimeout,
 	})
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (r *Runtime) clearFunctionContainers() error {
+	ctx := context.Background()
+	summary, err := r.cli.ContainerList(ctx, container.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	stopTimeout := 0 // Don't wait for graceful shutdown
+	for _, fun := range r.functions {
+		// Check container state
+		for _, summ := range summary {
+			if summ.Image == fun.ImageName {
+				err := r.cli.ContainerStop(ctx, summ.ID, container.StopOptions{
+					Timeout: &stopTimeout,
+				})
+				if err != nil {
+					return err
+				}
+
+				log.Printf("Stopped existing container %v\n", summ.Names)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -100,27 +153,43 @@ func (r *Runtime) updateFunctionStatus() error {
 		return err
 	}
 
+	log.Printf("Running containers: %v\n", summary)
+
 	for _, fun := range r.functions {
 		// Check container state
 		for _, summ := range summary {
-			if summ.Image == fun.imageName {
-				fun.containerId = summ.ID
-				fun.running = true
+			if summ.Image == fun.ImageName {
+				fun.ContainerId = summ.ID
+				fun.IsRunning = true
 			}
 		}
 
-		if fun.running {
-			log.Printf("Image %v is running as %v\n", fun.imageName, fun.containerId)
+		if fun.IsRunning {
+			log.Printf("Image %v is running as %v\n", fun.ImageName, fun.ContainerId)
 		} else {
-			log.Printf("Image %v is not running\n", fun.imageName)
+			log.Printf("Image %v is not running\n", fun.ImageName)
 		}
 	}
 
 	return nil
 }
 
-func (r *Runtime) callFunction(function *Function, path string) ([]byte, error) {
-	url := "http://127.0.0.1:" + strconv.Itoa(function.port) + path
+func (r *Runtime) callFunction(function *types.Function, path string) ([]byte, error) {
+	err := r.policy.PreFunctionCall(function)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		resp, err := http.Head("http://127.0.0.1:" + strconv.Itoa(function.Port))
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	url := "http://127.0.0.1:" + strconv.Itoa(function.Port) + path
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error calling function %v: %v", function.Name, err)
@@ -133,6 +202,11 @@ func (r *Runtime) callFunction(function *Function, path string) ([]byte, error) 
 		log.Printf("Cannot read function %v response: %v\n", function.Name, err)
 		return nil, err
 	}
+
+	err = r.policy.PostFunctionCall(function)
+	if err != nil {
+		return nil, err
+	}
 	return body, nil
 }
 
@@ -142,20 +216,20 @@ func (r *Runtime) CallFunctionByName(name string, path string) ([]byte, error) {
 			return r.callFunction(fun, path)
 		}
 	}
+
 	log.Printf("Unknown function requested %v\n", name)
 	return nil, fmt.Errorf("function %v not found", name)
 }
 
 func (r *Runtime) Start() error {
-	// Check whether functions are running
-	err := r.updateFunctionStatus()
+	// Remove running containers
+	err := r.clearFunctionContainers()
 	if err != nil {
 		return err
 	}
 
-	// Remove running containers
 	for _, fun := range r.functions {
-		if fun.running {
+		if fun.IsRunning {
 			log.Printf("Stopping function %v\n", fun.Name)
 			err = r.stopFunction(fun)
 			log.Printf("Stopped function %v\n", fun.Name)
@@ -165,24 +239,17 @@ func (r *Runtime) Start() error {
 		}
 	}
 
-	// Start function containers
-	for _, fun := range r.functions {
-		log.Printf("Starting function %v\n", fun.Name)
-		err = r.startFunction(fun)
-		if err != nil {
-			log.Printf("Cannot start function %v: %v\n", fun.Name, err)
-			return err
-		}
-		log.Printf("Started function %v as container %v with mapping 127.0.0.1:%d->tcp/80\n", fun.Name, fun.containerId, fun.port)
+	err = r.policy.OnRuntimeStart()
+	if err != nil {
+		return err
 	}
-
 	return nil
 }
 
 func (r *Runtime) Stop() error {
 	// Stop function containers
 	for _, fun := range r.functions {
-		log.Printf("Stopping function %v container %v\n", fun.Name, fun.containerId)
+		log.Printf("Stopping function %v container %v\n", fun.Name, fun.ContainerId)
 		err := r.stopFunction(fun)
 		if err != nil {
 			log.Printf("Cannot stop function %v: %v\n", fun.Name, err)

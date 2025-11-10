@@ -3,10 +3,14 @@ package slrun
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"slices"
+
+	"github.com/marcorentap/slrun/internal/types"
 )
 
-func validateConfig(config *Config) error {
+func validateConfig(config *types.Config) error {
 	// Function names should be unique
 	for _, f := range config.Functions {
 		for _, f2 := range config.Functions {
@@ -16,15 +20,20 @@ func validateConfig(config *Config) error {
 		}
 	}
 
+	validPolicies := []types.PolicyID{types.AlwaysHotPolicy, types.AlwaysColdPolicy}
+	if !slices.Contains(validPolicies, config.Policy) {
+		return fmt.Errorf("invalid policy: %s", config.Policy)
+	}
+
 	return nil
 }
 
-func ReadConfigFile(path string) (*Config, error) {
+func ReadConfigFile(path string) (*types.Config, error) {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	config := Config{ConfigFile: path}
+	config := types.Config{ConfigFile: path}
 
 	err = json.Unmarshal(bytes, &config)
 	if err != nil {
@@ -35,6 +44,8 @@ func ReadConfigFile(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("Policy: %v\n", config.Policy)
 
 	return &config, nil
 }
