@@ -32,3 +32,7 @@ func (p *AlwaysHot) PostFunctionCall(f *types.Function) error {
 	// Do nothing, functions are always hot
 	return nil
 }
+
+func (p *AlwaysHot) OnTick() error {
+	return nil
+}

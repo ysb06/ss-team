@@ -23,6 +23,7 @@ type Runtime struct {
 	running   bool
 	cli       *client.Client // Docker client
 	policy    types.Policy
+	tickRate  time.Duration
 }
 
 func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime, error) {
@@ -35,6 +36,7 @@ func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime,
 		functions: functions,
 		running:   false,
 		cli:       dockerCli,
+		tickRate:  5 * time.Millisecond,
 	}
 
 	var pol types.Policy
@@ -223,6 +225,18 @@ func (r *Runtime) Start() error {
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		for {
+			time.Sleep(r.tickRate)
+
+			err = r.policy.OnTick()
+			if err != nil {
+				log.Printf("Error on tick: %v\n", err)
+			}
+		}
+	}()
+
 	return nil
 }
 

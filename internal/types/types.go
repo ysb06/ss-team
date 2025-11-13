@@ -27,4 +27,5 @@ type Policy interface {
 	OnRuntimeStart() error
 	PreFunctionCall(f *Function) error
 	PostFunctionCall(f *Function) error
+	OnTick() error
 }

@@ -34,3 +34,7 @@ func (p *AlwaysCold) PostFunctionCall(f *types.Function) error {
 	log.Printf("AlwaysCold: Stopped function %v\n", f.Name)
 	return nil
 }
+
+func (p *AlwaysCold) OnTick() error {
+	return nil
+}
