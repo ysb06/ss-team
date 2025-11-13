@@ -172,7 +172,6 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 
 	req.Header = prevReq.Header
 	resp, err := http.DefaultClient.Do(req)
-	log.Printf("Request Header: %v\n", resp.Request.Header)
 	if err != nil {
 		log.Printf("Error calling function %v: %v", function.Name, err)
 		return nil, err
