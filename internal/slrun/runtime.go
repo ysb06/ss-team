@@ -146,34 +146,6 @@ func (r *Runtime) clearFunctionContainers() error {
 	return nil
 }
 
-func (r *Runtime) updateFunctionStatus() error {
-	ctx := context.Background()
-	summary, err := r.cli.ContainerList(ctx, container.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Running containers: %v\n", summary)
-
-	for _, fun := range r.functions {
-		// Check container state
-		for _, summ := range summary {
-			if summ.Image == fun.ImageName {
-				fun.ContainerId = summ.ID
-				fun.IsRunning = true
-			}
-		}
-
-		if fun.IsRunning {
-			log.Printf("Image %v is running as %v\n", fun.ImageName, fun.ContainerId)
-		} else {
-			log.Printf("Image %v is not running\n", fun.ImageName)
-		}
-	}
-
-	return nil
-}
-
 func (r *Runtime) callFunction(function *types.Function, path string, prevReq *http.Request) ([]byte, error) {
 	err := r.policy.PreFunctionCall(function)
 	if err != nil {
