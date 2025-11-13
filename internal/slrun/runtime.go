@@ -53,6 +53,12 @@ func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime,
 			StartFunc: r.startFunction,
 			StopFunc:  r.stopFunction,
 		}
+	case types.ColdOnIdlePolicy:
+		pol = &policy.ColdOnIdle{
+			Funcs:     functions,
+			StartFunc: r.startFunction,
+			StopFunc:  r.stopFunction,
+		}
 
 	default:
 		return nil, fmt.Errorf("unknown policy ID: %d", policyId)

@@ -1,13 +1,13 @@
 {
-    "policy": "always_hot",
-    "functions": [
-        {
-            "name": "func1",
-            "build_dir": "./functions/func1"
-        },
-        {
-            "name": "func2",
-            "build_dir": "./functions/func2"
-        }
-    ]
+  "policy": "cold_on_idle",
+  "functions": [
+    {
+      "name": "func1",
+      "build_dir": "./functions/func1"
+    },
+    {
+      "name": "func2",
+      "build_dir": "./functions/func2"
+    }
+  ]
 }

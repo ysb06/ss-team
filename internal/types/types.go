@@ -21,6 +21,7 @@ type PolicyID string
 const (
 	AlwaysHotPolicy  = "always_hot"
 	AlwaysColdPolicy = "always_cold"
+	ColdOnIdlePolicy = "cold_on_idle"
 )
 
 type Policy interface {
