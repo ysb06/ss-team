@@ -1,6 +1,7 @@
 package slrun
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -90,6 +91,8 @@ func (r *Runtime) startFunction(function *types.Function) error {
 	}
 	hostConfig := &container.HostConfig{
 		PortBindings: portMap,
+		// Enable access to host machine from container
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}
 
 	resp, err := r.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, platform, "")
@@ -172,13 +175,22 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 	}
 
 	url := "http://127.0.0.1:" + strconv.Itoa(function.Port) + path
-	req, err := http.NewRequest(prevReq.Method, url, nil)
-
+	
+	// Read the body from the original request
+	body, err := io.ReadAll(prevReq.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer prevReq.Body.Close()
+	
+	// Create a new request with the body
+	req, err := http.NewRequest(prevReq.Method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header = prevReq.Header
+	req.ContentLength = prevReq.ContentLength
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("Error calling function %v: %v", function.Name, err)
@@ -186,7 +198,7 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Cannot read function %v response: %v\n", function.Name, err)
 		return nil, err
@@ -196,7 +208,7 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 	if err != nil {
 		return nil, err
 	}
-	return body, nil
+	return respBody, nil
 }
 
 func (r *Runtime) CallFunctionByName(name string, path string, prevReq *http.Request) ([]byte, error) {

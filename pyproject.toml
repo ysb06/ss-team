@@ -1,0 +1,15 @@
+[project]
+name = "ss-team"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Seungbin Yim", email = "ysb06@hotmail.com"},
+]
+dependencies = ["requests>=2.32.5", "llama-cpp-python>=0.3.16", "transformers>=4.57.3", "torch>=2.9.1", "accelerate>=1.12.0", "httpx>=0.28.1"]
+requires-python = "==3.11.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false

@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . .
 
-# Expose port 80 for the HTTP server
-EXPOSE 80
+# Expose port 8080 for the HTTP server
+EXPOSE 8080
 
 # Run the server
 CMD ["python", "function.py"]
