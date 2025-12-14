@@ -22,6 +22,7 @@ def get_next_token_logprobs(prompt: str, top_k: int = 50) -> List[Tuple[str, flo
     """Get next token candidates with their log probabilities"""
     # Tokenize input
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    input_ids = inputs.input_ids[0]  # Get the token IDs
     
     # Get model output
     with torch.no_grad():
@@ -37,8 +38,14 @@ def get_next_token_logprobs(prompt: str, top_k: int = 50) -> List[Tuple[str, flo
         # Convert to list of (token, logprob) tuples
         candidates = []
         for logprob, idx in zip(top_k_logprobs.tolist(), top_k_indices.tolist()):
-            token = tokenizer.decode([idx])
-            candidates.append((token, logprob))
+            # IMPORTANT: Decode by appending the new token to the original sequence
+            # This preserves the tokenizer's context (spaces, subword boundaries, etc.)
+            new_ids = torch.cat([input_ids, torch.tensor([idx]).to(input_ids.device)])
+            full_text = tokenizer.decode(new_ids, skip_special_tokens=True)
+            
+            # Extract just the new token by removing the original prompt
+            new_token = full_text[len(prompt):]
+            candidates.append((new_token, logprob))
         
         print(f"[DEBUG TOP_LOGPROBS[0]] Type: list, Items: {candidates[:5]}")
         

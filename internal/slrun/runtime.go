@@ -74,6 +74,9 @@ func (r *Runtime) startFunction(function *types.Function) error {
 	ctx := context.Background()
 	config := &container.Config{
 		Image: function.ImageName,
+		Env: []string{
+			"LPM_SERVER_URL=http://host.docker.internal:9000/generate",
+		},
 	}
 	networkingConfig := &network.NetworkingConfig{}
 	platform := &ocispec.Platform{}

@@ -8,6 +8,10 @@
     {
       "name": "func2",
       "build_dir": "./functions/func2"
+    },
+    {
+      "name": "func3",
+      "build_dir": "./functions/func3"
     }
   ]
 }

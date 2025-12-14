@@ -6,7 +6,6 @@ REPO_ID = "unsloth/Llama-3.2-1B-Instruct-GGUF"
 # MODEL_FILENAME = "Llama-3.2-1B-Instruct-Q3_K_M.gguf"
 MODEL_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 MODEL_PATH = hf_hub_download(repo_id=REPO_ID, filename=MODEL_FILENAME)
-MODEL_PATH = "meta-llama/Llama-3.2-1B"
 
 llm = Llama(
     model_path=MODEL_PATH,
