@@ -1,0 +1,9 @@
+{
+  "policy": "mitigate",
+  "functions": [
+    {
+      "name": "func3",
+      "build_dir": "./functions/func3"
+    }
+  ]
+}

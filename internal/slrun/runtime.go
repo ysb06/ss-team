@@ -65,8 +65,18 @@ func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime,
 			Funcs:             functions,
 			StartFuncInstance: r.startFunctionInstance,
 			StopFuncInstance:  r.stopFunctionInstance,
-			MaxPoolSize:       5,
+			MaxPoolSize:       300,
 			MinPoolSize:       1,
+		}
+	case types.MitigatePolicy:
+		pol = &policy.Mitigate{
+			Funcs:             functions,
+			StartFuncInstance: r.startFunctionInstance,
+			StopFuncInstance:  r.stopFunctionInstance,
+			MaxPoolSize:       300,
+			MinPoolSize:       1,
+			DelayMean:         3.65,
+			DelayStdDev:       1.97,
 		}
 
 	default:

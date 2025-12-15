@@ -36,6 +36,7 @@ const (
 	AlwaysColdPolicy = "always_cold"
 	ColdOnIdlePolicy = "cold_on_idle"
 	HotStartPolicy   = "hot_start"
+	MitigatePolicy   = "mitigate"
 )
 
 type Policy interface {
