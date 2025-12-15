@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 type Function struct {
 	Name     string `json:"name"`
 	BuildDir string `json:"build_dir"`
@@ -17,6 +19,8 @@ type ContainerInstance struct {
 	ContainerId string
 	Port        int
 	Function    *Function // Reference to function template
+	LastUsedAt  time.Time // Last time this instance was used (for idle timeout)
+	InUse       bool      // Whether this instance is currently processing a request
 }
 
 type Config struct {
@@ -31,6 +35,7 @@ const (
 	AlwaysHotPolicy  = "always_hot"
 	AlwaysColdPolicy = "always_cold"
 	ColdOnIdlePolicy = "cold_on_idle"
+	HotStartPolicy   = "hot_start"
 )
 
 type Policy interface {

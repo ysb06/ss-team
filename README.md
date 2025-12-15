@@ -1,49 +1,128 @@
-# Prerequisites
-Make sure you have Docker and Go installed.
+# System Security Team Project
 
-SLRun was developed and tested on Ubuntu 25.10.
+This project is a security research initiative that reproduces the **PROMPTPEEK** side-channel attack. It analyzes security vulnerabilities that exploit KV cache sharing mechanisms and LPM (Longest Prefix Match) scheduling policies in multi-tenant LLM serving frameworks.
 
-# Configuration
-See `example_config.json` and example functions in `functions/`.
+**⚠️ Important**: This code should be used for educational and research purposes only. Unauthorized attacks on production environments are illegal and ethically problematic.
 
-```json
-{
-  "policy": "always_hot",
-  "functions": [
-    {
-      "name": "func1",
-      "build_dir": "./functions/func1"
-    },
-    {
-      "name": "func2",
-      "build_dir": "./functions/func2"
-    }
-  ]
-}
+## Project Overview
+
+This project consists of three main components:
+
+- **LPM Server**: A mock LLM server implementing LPM (Longest Prefix Match) scheduling
+- **Serverless System**: A Docker-based serverless function execution environment (implemented in Go)
+- **PromptPeek**: A client application that performs the actual attack
+
+## Prerequisites
+
+### Requirements
+
+- **Python**: 3.11.x
+- **Go**: 1.25.3 or higher
+- **Docker**: Required for container execution
+- **Operating System**: macOS, Linux, or Windows
+
+### Python Virtual Environment Setup
+
+Before running the project for the first time, set up a Python virtual environment and install the required packages:
+
+```bash
+# Create virtual environment
+python3.11 -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # macOS/Linux
+# or
+.venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -e .
 ```
 
-For each function, the `name` must be unique, and the directory pointed by `build_dir` must contain a Dockerfile located at its root, along with all other files required to build the function's image.
+## How to Run
 
-Currently supported policies are `always_hot`, `always_cold` and `cold_on_idle`.
+Each component of the project runs in a separate terminal. Open each terminal in the order below and execute the commands.
 
-# Execution
-To use `example_config.json` and port `8080`, you may use
-```
-go build
-./slrun --port 8080 --config ./example_config.json
-```
-or 
+### 1. Running the LPM Server
 
+The LPM server acts as a mock server that handles LLM requests. This server implements the LPM scheduling algorithm to simulate cache hit patterns.
+
+**Open a new terminal** and run the following commands:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Start LPM server
+PYTHONPATH=./src python -m test_peek
 ```
+
+Once the server starts successfully, it will wait for requests on a local port.
+
+### 2. Running the Serverless System
+
+The serverless system provides a Docker-based function execution environment. This component dynamically manages function instances and supports various startup policies (cold/hot start).
+
+**Open a new terminal** and run the following commands:
+
+```bash
+# Start serverless runtime
 go run . --port 8080 --config ./example_config.json
 ```
 
-To verify that it works, run
+Configuration file options:
+- `example_config.json`: Default configuration
+- `example_config_cold.json`: Cold start policy
+- `example_config_hot.json`: Hot start policy
+
+### 3. Running the PromptPeek Attack Client
+
+PromptPeek is the client that performs the actual attack. It sends multiple probe requests and analyzes response times to infer the victim's prompts.
+
+**Open a new terminal** and run the following commands:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Start PromptPeek attack
+PYTHONPATH=./src python -m promptpeek
+```
+
+Once the attack starts, it will load test prompts from the `data/prompts.csv` file and attempt to infer them token by token.
+
+## Project Structure
 
 ```
-curl localhost:1337/func1
-curl localhost:1337/func2
+ss-team/
+├── src/
+│   ├── promptpeek/          # Attack client implementation
+│   │   ├── attack.py         # Main attack logic
+│   │   ├── candidate/        # Candidate token generation
+│   │   └── dataset.py        # Dataset loader
+│   └── test_peek/            # LPM server implementation
+│       └── lpm.py            # LPM scheduling logic
+├── internal/                 # Go serverless system
+│   ├── policy/               # Startup policy implementation
+│   ├── slrun/                # Runtime logic
+│   └── types/                # Type definitions
+├── functions/                # Example serverless functions
+├── data/                     # Test data
+│   └── prompts.csv           # Test prompt dataset
+└── IMPLEMENTATION_GUIDELINES.md  # Detailed implementation guide
 ```
 
-You should see the responses from the functions.
+## Additional Resources
 
+- Detailed implementation guidelines: [IMPLEMENTATION_GUIDELINES.md](IMPLEMENTATION_GUIDELINES.md)
+- Legacy documentation: [README_legacy.md](README_legacy.md)
+
+## Troubleshooting
+
+### Python Module Not Found
+Make sure you've added `PYTHONPATH=./src` before your command.
+
+### Docker Permission Error
+Running the serverless system requires access to the Docker daemon. Verify that your user is part of the docker group.
+
+### Port Conflict Issue
+If the default port is already in use, you can specify a different port using the `--port` flag.

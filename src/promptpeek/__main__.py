@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     peek_count = 3
-    max_prompt_count = 10
+    max_prompt_count = 20  # 최대 프롬프트 수 제한 (원하는 값으로 조정 가능)
 
     # 전체 실험 시작 시간
     experiment_start_time = time.time()

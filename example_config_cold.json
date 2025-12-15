@@ -1,0 +1,17 @@
+{
+  "policy": "always_cold",
+  "functions": [
+    {
+      "name": "func1",
+      "build_dir": "./functions/func1"
+    },
+    {
+      "name": "func2",
+      "build_dir": "./functions/func2"
+    },
+    {
+      "name": "func3",
+      "build_dir": "./functions/func3"
+    }
+  ]
+}

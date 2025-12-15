@@ -60,6 +60,14 @@ func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime,
 			StartFunc: r.startFunction,
 			StopFunc:  r.stopFunction,
 		}
+	case types.HotStartPolicy:
+		pol = &policy.HotStart{
+			Funcs:             functions,
+			StartFuncInstance: r.startFunctionInstance,
+			StopFuncInstance:  r.stopFunctionInstance,
+			MaxPoolSize:       5,
+			MinPoolSize:       1,
+		}
 
 	default:
 		return nil, fmt.Errorf("unknown policy ID: %d", policyId)

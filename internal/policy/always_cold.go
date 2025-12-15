@@ -2,6 +2,7 @@ package policy
 
 import (
 	"log"
+	"time"
 
 	"github.com/marcorentap/slrun/internal/types"
 )
@@ -18,11 +19,17 @@ func (p *AlwaysCold) OnRuntimeStart() error {
 }
 
 func (p *AlwaysCold) PreFunctionCall(f *types.Function) (*types.ContainerInstance, error) {
+	startTime := time.Now()
+	
 	instance, err := p.StartFuncInstance(f)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("AlwaysCold: Started function %v (container %v)\n", f.Name, instance.ContainerId[:12])
+	
+	coldStartDuration := time.Since(startTime)
+	log.Printf("AlwaysCold: Started function %v (container %v) - Cold start time: %v\n", 
+		f.Name, instance.ContainerId[:12], coldStartDuration)
+	
 	return instance, nil
 }
 

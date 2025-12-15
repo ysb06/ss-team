@@ -20,7 +20,7 @@ func validateConfig(config *types.Config) error {
 		}
 	}
 
-	validPolicies := []types.PolicyID{types.AlwaysHotPolicy, types.AlwaysColdPolicy, types.ColdOnIdlePolicy}
+	validPolicies := []types.PolicyID{types.AlwaysHotPolicy, types.AlwaysColdPolicy, types.ColdOnIdlePolicy, types.HotStartPolicy}
 	if !slices.Contains(validPolicies, config.Policy) {
 		return fmt.Errorf("invalid policy: %s", config.Policy)
 	}
