@@ -1,5 +1,5 @@
 {
-  "policy": "cold_on_idle",
+  "policy": "always_cold",
   "functions": [
     {
       "name": "func1",

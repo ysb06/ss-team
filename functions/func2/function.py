@@ -1,4 +1,4 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -10,10 +10,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(bytes("path=" + self.path, "utf-8"))
 
 
-def run(server_class=HTTPServer, handler_class=SimpleHTTPRequestHandler, port=80):
+def run(server_class=ThreadingHTTPServer, handler_class=SimpleHTTPRequestHandler, port=80):
     server_address = ("", port)
     httpd = server_class(server_address, handler_class)
-    print(f"Starting httpd server on port {port}...")
+    print(f"Starting threaded httpd server on port {port}...")
     httpd.serve_forever()
 
 

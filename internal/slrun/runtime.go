@@ -44,9 +44,9 @@ func NewRuntime(functions []*types.Function, policyId types.PolicyID) (*Runtime,
 	switch policyId {
 	case types.AlwaysColdPolicy:
 		pol = &policy.AlwaysCold{
-			Funcs:     functions,
-			StartFunc: r.startFunction,
-			StopFunc:  r.stopFunction,
+			Funcs:             functions,
+			StartFuncInstance: r.startFunctionInstance,
+			StopFuncInstance:  r.stopFunctionInstance,
 		}
 	case types.AlwaysHotPolicy:
 		pol = &policy.AlwaysHot{
@@ -122,6 +122,81 @@ func (r *Runtime) startFunction(function *types.Function) error {
 	return nil
 }
 
+func (r *Runtime) startFunctionInstance(function *types.Function) (*types.ContainerInstance, error) {
+	ctx := context.Background()
+	config := &container.Config{
+		Image: function.ImageName,
+		Env: []string{
+			"LPM_SERVER_URL=http://host.docker.internal:9000/generate",
+		},
+	}
+	networkingConfig := &network.NetworkingConfig{}
+	platform := &ocispec.Platform{}
+
+	port, err := nat.NewPort("tcp", "80")
+	if err != nil {
+		return nil, err
+	}
+	portMap := nat.PortMap{}
+	portMap[port] = []nat.PortBinding{
+		{
+			HostIP:   "127.0.0.1",
+			HostPort: "",
+		},
+	}
+	hostConfig := &container.HostConfig{
+		PortBindings: portMap,
+		ExtraHosts:   []string{"host.docker.internal:host-gateway"},
+	}
+
+	resp, err := r.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, platform, "")
+	if err != nil {
+		return nil, err
+	}
+
+	startOptions := container.StartOptions{}
+	err = r.cli.ContainerStart(ctx, resp.ID, startOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	inspResp, err := r.cli.ContainerInspect(ctx, resp.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	hostPort := inspResp.NetworkSettings.Ports["80/tcp"][0].HostPort
+	portNum, _ := strconv.Atoi(hostPort)
+
+	instance := &types.ContainerInstance{
+		ContainerId: resp.ID,
+		Port:        portNum,
+		Function:    function,
+	}
+
+	return instance, nil
+}
+
+func (r *Runtime) stopFunctionInstance(instance *types.ContainerInstance) error {
+	ctx := context.Background()
+	stopTimeout := 0
+	err := r.cli.ContainerStop(ctx, instance.ContainerId, container.StopOptions{
+		Timeout: &stopTimeout,
+	})
+	if err != nil {
+		return err
+	}
+
+	err = r.cli.ContainerRemove(ctx, instance.ContainerId, container.RemoveOptions{
+		Force: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *Runtime) stopFunction(function *types.Function) error {
 	ctx := context.Background()
 	stopTimeout := 0 // Don't wait for graceful shutdown
@@ -131,6 +206,15 @@ func (r *Runtime) stopFunction(function *types.Function) error {
 	if err != nil {
 		return err
 	}
+	
+	// Remove the container to free up resources
+	err = r.cli.ContainerRemove(ctx, function.ContainerId, container.RemoveOptions{
+		Force: true,
+	})
+	if err != nil {
+		return err
+	}
+	
 	function.IsRunning = false
 	return nil
 }
@@ -163,13 +247,20 @@ func (r *Runtime) clearFunctionContainers() error {
 }
 
 func (r *Runtime) callFunction(function *types.Function, path string, prevReq *http.Request) ([]byte, error) {
-	err := r.policy.PreFunctionCall(function)
+	instance, err := r.policy.PreFunctionCall(function)
 	if err != nil {
 		return nil, err
 	}
 
+	// Ensure PostFunctionCall is always executed, even on error or timeout
+	defer func() {
+		if postErr := r.policy.PostFunctionCall(instance); postErr != nil {
+			log.Printf("Error in PostFunctionCall for %v: %v", function.Name, postErr)
+		}
+	}()
+
 	for {
-		resp, err := http.Head("http://127.0.0.1:" + strconv.Itoa(function.Port))
+		resp, err := http.Head("http://127.0.0.1:" + strconv.Itoa(instance.Port))
 		if err == nil {
 			resp.Body.Close()
 			break
@@ -177,7 +268,7 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	url := "http://127.0.0.1:" + strconv.Itoa(function.Port) + path
+	url := "http://127.0.0.1:" + strconv.Itoa(instance.Port) + path
 	
 	// Read the body from the original request
 	body, err := io.ReadAll(prevReq.Body)
@@ -194,7 +285,12 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 
 	req.Header = prevReq.Header
 	req.ContentLength = prevReq.ContentLength
-	resp, err := http.DefaultClient.Do(req)
+	
+	// Create HTTP client with 10 minute timeout
+	client := &http.Client{
+		Timeout: 8 * time.Minute,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error calling function %v: %v", function.Name, err)
 		return nil, err
@@ -207,10 +303,6 @@ func (r *Runtime) callFunction(function *types.Function, path string, prevReq *h
 		return nil, err
 	}
 
-	err = r.policy.PostFunctionCall(function)
-	if err != nil {
-		return nil, err
-	}
 	return respBody, nil
 }
 

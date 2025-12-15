@@ -1,4 +1,4 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import json
 import urllib.request
 import urllib.error
@@ -37,7 +37,7 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
             )
             
             print(f"Sending to LPM server...", file=sys.stderr)
-            with urllib.request.urlopen(req, timeout=120) as response:
+            with urllib.request.urlopen(req, timeout=720) as response:
                 print(f"Got response from LPM server: {response.status}", file=sys.stderr)
                 if response.status == 200:
                     resp_body = response.read().decode('utf-8')
@@ -65,7 +65,7 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(error_msg.encode('utf-8'))
 
 
-def run(server_class=HTTPServer, handler_class=LPMRequestHandler, port=80):
+def run(server_class=ThreadingHTTPServer, handler_class=LPMRequestHandler, port=80):
     server_address = ("", port)
     httpd = server_class(server_address, handler_class)
     print(f"Starting httpd server on port {port}...")

@@ -4,10 +4,19 @@ type Function struct {
 	Name     string `json:"name"`
 	BuildDir string `json:"build_dir"`
 
-	ImageName   string
+	ImageName string
+	
+	// For ColdOnIdle and AlwaysHot policies that reuse containers
 	ContainerId string
 	IsRunning   bool
 	Port        int // 127.0.0.1:X->80/tcp
+}
+
+// ContainerInstance represents a single container instance for a request
+type ContainerInstance struct {
+	ContainerId string
+	Port        int
+	Function    *Function // Reference to function template
 }
 
 type Config struct {
@@ -26,7 +35,7 @@ const (
 
 type Policy interface {
 	OnRuntimeStart() error
-	PreFunctionCall(f *Function) error
-	PostFunctionCall(f *Function) error
+	PreFunctionCall(f *Function) (*ContainerInstance, error)
+	PostFunctionCall(instance *ContainerInstance) error
 	OnTick() error
 }

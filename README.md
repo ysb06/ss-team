@@ -27,10 +27,15 @@ For each function, the `name` must be unique, and the directory pointed by `buil
 Currently supported policies are `always_hot`, `always_cold` and `cold_on_idle`.
 
 # Execution
-To use `example_config.json` and port `1337`, you may use
+To use `example_config.json` and port `8080`, you may use
 ```
 go build
-./slrun --port 1337 --config ./example_config.json
+./slrun --port 8080 --config ./example_config.json
+```
+or 
+
+```
+go run . --port 8080 --config ./example_config.json
 ```
 
 To verify that it works, run
@@ -41,3 +46,4 @@ curl localhost:1337/func2
 ```
 
 You should see the responses from the functions.
+

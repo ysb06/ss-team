@@ -7,9 +7,9 @@ import (
 )
 
 type AlwaysCold struct {
-	Funcs     []*types.Function
-	StartFunc func(*types.Function) error
-	StopFunc  func(*types.Function) error
+	Funcs             []*types.Function
+	StartFuncInstance func(*types.Function) (*types.ContainerInstance, error)
+	StopFuncInstance  func(*types.ContainerInstance) error
 }
 
 func (p *AlwaysCold) OnRuntimeStart() error {
@@ -17,21 +17,21 @@ func (p *AlwaysCold) OnRuntimeStart() error {
 	return nil
 }
 
-func (p *AlwaysCold) PreFunctionCall(f *types.Function) error {
-	err := p.StartFunc(f)
+func (p *AlwaysCold) PreFunctionCall(f *types.Function) (*types.ContainerInstance, error) {
+	instance, err := p.StartFuncInstance(f)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	log.Printf("AlwaysCold: Started function %v\n", f.Name)
-	return nil
+	log.Printf("AlwaysCold: Started function %v (container %v)\n", f.Name, instance.ContainerId[:12])
+	return instance, nil
 }
 
-func (p *AlwaysCold) PostFunctionCall(f *types.Function) error {
-	err := p.StopFunc(f)
+func (p *AlwaysCold) PostFunctionCall(instance *types.ContainerInstance) error {
+	err := p.StopFuncInstance(instance)
 	if err != nil {
 		return err
 	}
-	log.Printf("AlwaysCold: Stopped function %v\n", f.Name)
+	log.Printf("AlwaysCold: Stopped function %v (container %v)\n", instance.Function.Name, instance.ContainerId[:12])
 	return nil
 }
 

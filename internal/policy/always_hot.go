@@ -23,12 +23,17 @@ func (p *AlwaysHot) OnRuntimeStart() error {
 	return nil
 }
 
-func (p *AlwaysHot) PreFunctionCall(f *types.Function) error {
-	// Do nothing, functions are always hot
-	return nil
+func (p *AlwaysHot) PreFunctionCall(f *types.Function) (*types.ContainerInstance, error) {
+	// Return container instance using shared container
+	instance := &types.ContainerInstance{
+		ContainerId: f.ContainerId,
+		Port:        f.Port,
+		Function:    f,
+	}
+	return instance, nil
 }
 
-func (p *AlwaysHot) PostFunctionCall(f *types.Function) error {
+func (p *AlwaysHot) PostFunctionCall(instance *types.ContainerInstance) error {
 	// Do nothing, functions are always hot
 	return nil
 }
