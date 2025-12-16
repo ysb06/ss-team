@@ -1,11 +1,11 @@
 """
 LPM (Longest Prefix Match) Scheduling Simulator
-SGLang의 LPM 스케줄링을 모사하는 HTTP 서버
+HTTP server simulating SGLang's LPM scheduling
 
-기본적으로 프롬프트를 포함한 HTTP 요청을 수신하면 Ollama에 해당 프롬프트를 전송하고 응답을 반환
-단, 요청을 보내기 전 LPM 스케쥴링을 본 코드에서 수행
-KV-Cache는 단순히 딕셔너리로 구현
-즉, SGLang의 LPM의 핵심인 가장 긴 매치를 가진 요청을 우선 처리 부분만 구현
+Basically, when receiving HTTP requests containing prompts, sends the prompts to Ollama and returns responses
+However, LPM scheduling is performed in this code before sending requests
+KV-Cache is simply implemented as a dictionary
+In other words, only the core part of SGLang's LPM - prioritizing requests with longest match - is implemented
 """
 import json
 import logging
@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:1b"
 LPM_SERVER_PORT = 9000
-OLLAMA_TIMEOUT = 720  # Ollama 요청 타임아웃 (초)
-CLIENT_RESPONSE_TIMEOUT = 725  # 클라이언트 응답 대기 타임아웃 (초)
+OLLAMA_TIMEOUT = 720  # Ollama request timeout (seconds)
+CLIENT_RESPONSE_TIMEOUT = 725  # Client response wait timeout (seconds)
 
 
 @dataclass(order=True)
 class Request:
-    """요청 정보를 담는 데이터 클래스"""
-    priority: int = field(compare=True)  # 음수값 (긴 매치일수록 우선순위 높음)
+    """Data class containing request information"""
+    priority: int = field(compare=True)  # Negative value (longer match = higher priority)
     timestamp: float = field(compare=True)
     prompt: str = field(compare=False)
     request_id: str = field(compare=False)
@@ -43,22 +43,22 @@ class Request:
 
 
 class KVCache:
-    """KV 캐시를 시뮬레이션하는 클래스"""
+    """Class simulating KV cache"""
     
     def __init__(self):
         self.cache: Dict[str, float] = {}  # {prompt: cached_timestamp}
         self.lock = threading.Lock()
     
     def add(self, prompt: str):
-        """캐시에 프롬프트 추가"""
+        """Add prompt to cache"""
         with self.lock:
             self.cache[prompt] = time.time()
             logger.info(f"[CACHE] Added: '{prompt[:50]}...' (Total cached: {len(self.cache)})")
     
     def find_longest_prefix_match(self, prompt: str) -> Tuple[str, int]:
         """
-        주어진 프롬프트와 가장 긴 접두사 매칭을 가진 캐시 엔트리 찾기
-        단방향 매칭: 캐시된 프롬프트가 새 요청의 접두사인지 확인
+        Find cache entry with longest prefix match for given prompt
+        Unidirectional matching: Check if cached prompt is a prefix of new request
         Returns: (matched_prefix, match_length)
         """
         with self.lock:
@@ -68,8 +68,8 @@ class KVCache:
             logger.debug(f"[CACHE] Finding LPM for prompt: '{prompt[:50]}...' (Cache size: {len(self.cache)})")
             
             for cached_prompt in self.cache.keys():
-                # 단방향 매칭: cached_prompt가 prompt로 시작하는지 확인
-                # (캐시된 긴 프롬프트가 새 요청을 prefix로 가지는지)
+                # Unidirectional matching: Check if cached_prompt starts with prompt
+                # (Check if long cached prompt has new request as prefix)
                 if cached_prompt.startswith(prompt):
                     if len(cached_prompt) > max_length:
                         max_length = len(cached_prompt)
@@ -83,14 +83,14 @@ class KVCache:
             return longest_match, max_length
     
     def clear(self):
-        """캐시 초기화"""
+        """Clear cache"""
         with self.lock:
             cache_size = len(self.cache)
             self.cache.clear()
             logger.info(f"[CACHE] Cleared {cache_size} entries")
     
     def dump_state(self):
-        """현재 캐시 상태 덤프 (디버깅용)"""
+        """Dump current cache state (for debugging)"""
         with self.lock:
             logger.info(f"[CACHE] === Cache State Dump (Total: {len(self.cache)}) ===")
             for i, (prompt, timestamp) in enumerate(self.cache.items(), 1):
@@ -99,7 +99,7 @@ class KVCache:
 
 
 class LPMScheduler:
-    """LPM 스케줄링을 수행하는 클래스"""
+    """Class performing LPM scheduling"""
     
     def __init__(self, kv_cache: KVCache, num_workers: int = 4):
         self.kv_cache = kv_cache
@@ -107,15 +107,15 @@ class LPMScheduler:
         self.worker_threads = []
         self.num_workers = num_workers
         self.running = True
-        self.active_requests = []  # 현재 처리 중인 요청들 추적
+        self.active_requests = []  # Track currently processing requests
         self.active_requests_lock = threading.Lock()
     
     def submit_request(self, prompt: str, request_id: str) -> tuple[Queue, Request]:
-        """요청을 스케줄러에 제출"""
-        # LPM: 가장 긴 prefix 매치를 찾아서 우선순위 계산
+        """Submit request to scheduler"""
+        # LPM: Find longest prefix match and calculate priority
         matched_prefix, match_length = self.kv_cache.find_longest_prefix_match(prompt)
         
-        # 우선순위: 매치 길이가 길수록 높은 우선순위 (음수 사용)
+        # Priority: longer match length = higher priority (use negative value)
         priority = -match_length
         
         response_queue = Queue()
@@ -138,7 +138,7 @@ class LPMScheduler:
         return response_queue, request
     
     def start_worker(self):
-        """워커 스레드 시작 (멀티 워커)"""
+        """Start worker threads (multi-worker)"""
         for i in range(self.num_workers):
             worker_thread = threading.Thread(target=self._process_requests, args=(i,), daemon=True)
             worker_thread.start()
@@ -146,7 +146,7 @@ class LPMScheduler:
         logger.info(f"[SCHEDULER] Started {self.num_workers} worker threads")
     
     def _process_requests(self, worker_id: int):
-        """요청을 우선순위 순서대로 처리 (멀티 워커)"""
+        """Process requests in priority order (multi-worker)"""
         logger.info(f"[WORKER-{worker_id}] Started")
         while self.running:
             try:
@@ -198,16 +198,16 @@ class LPMScheduler:
                         ollama_duration = time.time() - ollama_start
                         logger.debug(f"[WORKER-{worker_id}] Ollama responded in {ollama_duration:.3f}s")
                         
-                        # 응답 전송 전 다시 취소 확인
+                        # Check cancellation again before sending response
                         if not request.cancelled.is_set():
-                            # 응답을 요청자에게 전달
+                            # Send response to requester
                             request.response_queue.put(response_text)
                         else:
                             request.response_queue.put("Error: Request cancelled")
                     else:
                         request.response_queue.put("Error: Request cancelled")
                 
-                # 활성 요청 목록에서 제거
+                # Remove from active request list
                 with self.active_requests_lock:
                     if request in self.active_requests:
                         self.active_requests.remove(request)
@@ -220,20 +220,20 @@ class LPMScheduler:
                 self.request_queue.task_done()
                 
             except:
-                # 타임아웃이나 다른 예외는 무시하고 계속 대기
+                # Ignore timeout and other exceptions, continue waiting
                 continue
     
     def flush_all(self):
-        """모든 요청을 중단하고 캐시 초기화"""
+        """Abort all requests and clear cache"""
         logger.info("[SCHEDULER] Flushing all requests and cache...")
         
-        # 1. 현재 처리 중인 모든 요청에 취소 플래그 설정
+        # 1. Set cancel flag for all currently processing requests
         with self.active_requests_lock:
             for request in self.active_requests:
                 request.cancelled.set()
             active_count = len(self.active_requests)
         
-        # 2. 큐에 있는 모든 요청을 꺼내서 취소 처리
+        # 2. Remove all requests from queue and cancel them
         cancelled_queue_count = 0
         while not self.request_queue.empty():
             try:
@@ -245,13 +245,13 @@ class LPMScheduler:
             except:
                 break
         
-        # 3. 캐시 초기화
+        # 3. Clear cache
         self.kv_cache.clear()
         
         logger.info(f"[SCHEDULER] Flushed: {active_count} active requests, {cancelled_queue_count} queued requests")
     
     def _send_to_ollama(self, prompt: str) -> str:
-        """Ollama에 실제 요청 전송"""
+        """Send actual request to Ollama"""
         payload = {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
@@ -285,14 +285,14 @@ scheduler = LPMScheduler(kv_cache)
 
 
 class LPMRequestHandler(BaseHTTPRequestHandler):
-    """LPM 서버의 HTTP 요청 핸들러"""
+    """HTTP request handler for LPM server"""
     
     def log_message(self, format, *args):
-        """로그 메시지를 logger로 리다이렉트"""
+        """Redirect log messages to logger"""
         logger.debug(f"HTTP: {format % args}")
     
     def do_POST(self):
-        """POST 요청 처리"""
+        """Handle POST request"""
         if self.path == "/generate":
             request_obj = None
             try:
@@ -307,10 +307,10 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
                 
                 request_id = f"req_{int(time.time() * 1000000)}"
                 
-                # 스케줄러에 요청 제출
+                # Submit request to scheduler
                 response_queue, request_obj = scheduler.submit_request(post_data, request_id)
                 
-                # 응답 대기 (클라이언트 타임아웃보다 약간 짧게)
+                # Wait for response (slightly shorter than client timeout)
                 response_text = response_queue.get(timeout=CLIENT_RESPONSE_TIMEOUT)
                 
                 self.send_response(200)
@@ -336,7 +336,7 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
                     self.send_response(500)
                     self.end_headers()
                 except:
-                    pass  # 클라이언트가 이미 연결을 끊은 경우
+                    pass  # Client already disconnected
                 return
         
         elif self.path == "/flush_cache":
@@ -351,7 +351,7 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
     
     def do_GET(self):
-        """GET 요청 처리"""
+        """Handle GET request"""
         if self.path == "/health":
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
@@ -363,12 +363,12 @@ class LPMRequestHandler(BaseHTTPRequestHandler):
 
 
 def run_server(port: int = LPM_SERVER_PORT):
-    """LPM 서버 실행"""
-    # 스케줄러 워커 시작
+    """Run LPM server"""
+    # Start scheduler worker
     scheduler.start_worker()
     
     server_address = ('', port)
-    # ThreadingHTTPServer로 변경하여 멀티스레드 요청 처리
+    # Change to ThreadingHTTPServer for multi-threaded request handling
     httpd = ThreadingHTTPServer(server_address, LPMRequestHandler)
     logger.info(f"LPM Server starting on port {port}...")
     logger.info(f"Ollama URL: {OLLAMA_URL}")

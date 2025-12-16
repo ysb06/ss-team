@@ -4,19 +4,19 @@ import json
 
 def send_to_sglang(prompt: str, server_url: str = "http://192.168.1.8:30000") -> dict:
     """
-    SGLang 서버에 텍스트를 보내고 응답을 받습니다.
+    Send text to SGLang server and receive response.
     
     Args:
-        prompt: 전송할 텍스트 프롬프트
-        server_url: SGLang 서버 URL (기본값: http://192.168.1.8:30000)
+        prompt: Text prompt to send
+        server_url: SGLang server URL (default: http://192.168.1.8:30000)
     
     Returns:
-        서버로부터 받은 응답 딕셔너리
+        Response dictionary received from server
     """
-    # SGLang API 엔드포인트
+    # SGLang API endpoint
     endpoint = f"{server_url}/generate"
     
-    # 요청 데이터 구성
+    # Configure request data
     payload = {
         "text": prompt,
         "sampling_params": {
@@ -26,7 +26,7 @@ def send_to_sglang(prompt: str, server_url: str = "http://192.168.1.8:30000") ->
     }
     
     try:
-        # POST 요청 전송
+        # Send POST request
         response = requests.post(
             endpoint,
             json=payload,
@@ -34,18 +34,18 @@ def send_to_sglang(prompt: str, server_url: str = "http://192.168.1.8:30000") ->
             timeout=30
         )
         
-        # 응답 확인
+        # Check response
         response.raise_for_status()
         
-        # JSON 응답 파싱
+        # Parse JSON response
         result = response.json()
         return result
         
     except requests.exceptions.ConnectionError:
-        print(f"❌ 서버 연결 실패: {server_url}")
+        print(f"❌ Server connection failed: {server_url}")
         raise
     except requests.exceptions.Timeout:
-        print(f"⏱️ 요청 시간 초과")
+        print(f"⏱️ Request timeout")
         raise
     except requests.exceptions.RequestException as e:
         print(f"❌ 요청 중 오류 발생: {e}")
