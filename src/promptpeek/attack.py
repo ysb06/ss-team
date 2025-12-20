@@ -4,8 +4,12 @@ Single token extraction attack implementation
 """
 
 import asyncio
+import csv
+import json
 import logging
+import os
 import time
+from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 import httpx
 from promptpeek.candidate.base import get_top_k_candidates, get_bottom_k_dummies
@@ -31,6 +35,9 @@ HTTPX_KEEPALIVE_CONNECTIONS = 20  # Keep-alive connection pool
 REQUEST_TIMEOUT = (
     660.0  # Individual request timeout in seconds (increased for queue wait time)
 )
+
+# CSV logging configuration
+CSV_OUTPUT_PATH = "output/attack_results.csv"
 
 
 async def peek_one_token(
@@ -285,6 +292,67 @@ async def flush_cache():
         logger.error(f"[!] Cache flush failed: {e}")
 
 
+def _log_attack_result_to_csv(
+    victim_id: str,
+    victim_prompt: str,
+    known_prefix: str,
+    peek_count: int,
+    tokens_extracted: int,
+    correct_tokens: int,
+    accuracy: float,
+    extracted_tokens: List[str],
+    match_status: bool,
+    total_execution_time: float,
+    peek_one_token_times: List[float],
+    attack_request_times: List[float],
+    reconstructed: str
+):
+    """Log attack results to CSV file"""
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(CSV_OUTPUT_PATH), exist_ok=True)
+    
+    # Check if file exists to determine if we need to write header
+    file_exists = os.path.isfile(CSV_OUTPUT_PATH)
+    
+    # Prepare row data
+    row = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'victim_id': victim_id,
+        'peek_count': peek_count,
+        'tokens_extracted': tokens_extracted,
+        'correct_tokens': correct_tokens,
+        'accuracy': f"{accuracy:.4f}",
+        'extracted_tokens': json.dumps(extracted_tokens, ensure_ascii=False),
+        'match_status': 'MATCH' if match_status else 'NO_MATCH',
+        'total_execution_time': f"{total_execution_time:.2f}",
+        'peek_one_token_times': json.dumps([f"{t:.2f}" for t in peek_one_token_times]),
+        'attack_request_times': json.dumps([f"{t:.2f}" for t in attack_request_times]),
+        'reconstructed_preview': reconstructed[:100],
+        'victim_prompt_preview': victim_prompt[:100],
+        'known_prefix_preview': known_prefix[:100]
+    }
+    
+    # Write to CSV
+    try:
+        with open(CSV_OUTPUT_PATH, 'a', newline='', encoding='utf-8') as csvfile:
+            fieldnames = [
+                'timestamp', 'victim_id', 'peek_count', 'tokens_extracted', 
+                'correct_tokens', 'accuracy', 'extracted_tokens', 'match_status',
+                'total_execution_time', 'peek_one_token_times', 'attack_request_times',
+                'reconstructed_preview', 'victim_prompt_preview', 'known_prefix_preview'
+            ]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # Write header if file is new
+            if not file_exists:
+                writer.writeheader()
+            
+            writer.writerow(row)
+            logger.info(f"[CSV] Attack result logged to {CSV_OUTPUT_PATH}")
+    except Exception as e:
+        logger.error(f"[CSV] Failed to log attack result: {e}")
+
+
 async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: int = 1, max_connections: Optional[int] = None, victim_id: str = "") -> Tuple[int, List[str], List[float], List[float]]:
     """
     Test scenario: Attack test on known victim prompt
@@ -299,6 +367,9 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
     Returns:
         (number_of_correct_tokens, extracted_token_list, peek_one_token_times, attack_request_times) tuple
     """
+    # Start measuring total execution time
+    function_start_time = time.time()
+    
     victim_label = f"[VICTIM{victim_id}]" if victim_id else "[TEST]"
     
     print("\n" + "=" * 80)
@@ -350,6 +421,15 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
             else:
                 break
     
+    # Calculate total execution time
+    total_execution_time = time.time() - function_start_time
+    
+    # Determine match status
+    match_status = victim_prompt.startswith(reconstructed)
+    
+    # Calculate accuracy as float
+    accuracy = correct_count / len(extracted_tokens) if extracted_tokens else 0.0
+    
     # Print results
     print("\n" + "=" * 80)
     print(f"{victim_label} [RESULT] Extraction Summary:")
@@ -357,10 +437,11 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
     print(f"{victim_label} [RESULT] Tokens extracted:   {len(extracted_tokens)}")
     print(f"{victim_label} [RESULT] Correct tokens:     {correct_count}")
     print(f"{victim_label} [RESULT] Accuracy:           {correct_count}/{len(extracted_tokens) if extracted_tokens else 0}")
+    print(f"{victim_label} [RESULT] Total execution:    {total_execution_time:.2f} seconds")
     print(f"\n{victim_label} [RESULT] Extracted tokens:   {extracted_tokens}")
     print(f"{victim_label} [RESULT] Reconstructed:      '{reconstructed[:100]}...'")
     
-    if victim_prompt.startswith(reconstructed):
+    if match_status:
         print(f"{victim_label} [RESULT] ✓ Reconstruction matches victim prompt!")
     else:
         print(f"{victim_label} [RESULT] ✗ Reconstruction does not match")
@@ -368,6 +449,23 @@ async def test_single_attack(victim_prompt: str, known_prefix: str, peek_count: 
         print(f"{victim_label} [RESULT] Got:      '{reconstructed[len(known_prefix):]}'")
     
     print("=" * 80 + "\n")
+    
+    # Log results to CSV
+    _log_attack_result_to_csv(
+        victim_id=victim_id if victim_id else "TEST",
+        victim_prompt=victim_prompt,
+        known_prefix=known_prefix,
+        peek_count=peek_count,
+        tokens_extracted=len(extracted_tokens),
+        correct_tokens=correct_count,
+        accuracy=accuracy,
+        extracted_tokens=extracted_tokens,
+        match_status=match_status,
+        total_execution_time=total_execution_time,
+        peek_one_token_times=peek_one_token_times,
+        attack_request_times=attack_request_times,
+        reconstructed=reconstructed
+    )
 
     return correct_count, extracted_tokens, peek_one_token_times, attack_request_times
 

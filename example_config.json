@@ -1,5 +1,5 @@
 {
-  "policy": "hot_start",
+  "policy": "mitigate",
   "functions": [
     {
       "name": "func3",

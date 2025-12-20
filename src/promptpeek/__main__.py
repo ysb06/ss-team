@@ -10,4 +10,5 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 if __name__ == "__main__":
-    double_victim_experiment()
+    # double_victim_experiment()
+    single_victim_experiment()

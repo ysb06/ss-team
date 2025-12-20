@@ -6,13 +6,11 @@ from .dataset import load_awesome_chatgpt_prompts
 
 logger = logging.getLogger(__name__)
 
-def double_victim_experiment():
+def double_victim_experiment(peek_count=6, max_prompt_pairs=30):
     """
     2 Victim - 2 Attacker simultaneous attack experiment
     Attack prompts in pairs of 2 and aggregate results
     """
-    peek_count = 3
-    max_prompt_pairs = 20  # Maximum prompt pair limit
 
     # Overall experiment start time
     experiment_start_time = time.time()
@@ -209,9 +207,7 @@ def double_victim_experiment():
     print("=" * 80 + "\n")
     logger.info("[MAIN] DOUBLE attack process completed.")
 
-def single_victim_experiment():
-    peek_count = 3
-    max_prompt_count = 20  # Maximum prompt count limit (adjust to desired value)
+def single_victim_experiment(peek_count=3, max_prompt_count=20):
 
     # Overall experiment start time
     experiment_start_time = time.time()
